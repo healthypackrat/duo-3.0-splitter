@@ -1,0 +1,153 @@
+#!/usr/bin/ruby
+
+require 'optparse'
+require 'pathname'
+
+class App
+  class Error < StandardError
+  end
+
+  NUMBER_OF_SECTIONS = 45
+  NUMBER_OF_TRACKS = 560
+
+  DATA_DIR = Pathname.new(__dir__) + '../data'
+
+  FORMATS = %w[mp3 aac wav]
+
+  def initialize
+    @db = load_db
+    @output_dir = Pathname.new(File.expand_path('~/Desktop/DUO 3.0'))
+    @format = 'mp3'
+  end
+
+  def run(argv=ARGV)
+    parse_options(argv)
+    handle_args(argv)
+    process(build_commands)
+  end
+
+  private
+
+  def load_db
+    db = {}
+
+    (1..NUMBER_OF_SECTIONS).each do |section_number|
+      path = DATA_DIR.join('labels/%02d.txt' % section_number)
+
+      records = path.readlines.map(&:chomp).map {|line| line.split(/\t/) }
+
+      records.each_cons(2).each do |current_record, next_record|
+        start_pos = current_record[0]
+        end_pos = next_record[0]
+        track_number = current_record[2].to_i
+
+        if db.has_key?(track_number)
+          raise Error, "found duplicate track #{track_number} in #{path}"
+        end
+
+        db[track_number] = {
+          start_pos: start_pos,
+          end_pos: end_pos,
+          section: section_number
+        }
+      end
+    end
+
+    (1..NUMBER_OF_TRACKS).each do |track_number|
+      unless db[track_number]
+        raise Error, "couldn't load a record for track #{track_number}"
+      end
+    end
+
+    db
+  end
+
+  def parse_options(argv)
+    parser = OptionParser.new
+
+    parser.banner = "Usage: #{File.basename($PROGRAM_NAME)} [options] FILES..."
+
+    parser.on('-d', '--output-dir=PATH', "Output directory (default: #{@output_dir})") do |value|
+      @output_dir = Pathname.new(value)
+    end
+
+    parser.on('-f', '--format=FORMAT', FORMATS, "Output format (default: #{@format}; one of #{FORMATS.join(', ')})") do |value|
+      @format = value
+    end
+
+    parser.parse!(argv)
+  end
+
+  def handle_args(argv)
+    if argv.empty?
+      abort 'no files were given'
+    end
+
+    argv.each do |path|
+      path = Pathname.new(path)
+
+      if /\A(\d+)/ =~ path.basename.to_s
+        section_number = $1.to_i
+
+        @db.each do |_, record|
+          if record[:section] == section_number
+            record[:source] = path
+          end
+        end
+      else
+        abort "input file name doesn't start with a number: #{path}"
+      end
+    end
+  end
+
+  def process(commands)
+    @output_dir.mkpath
+
+    commands.each do |command|
+      unless system(*command)
+        raise Error, "process exit with #{$?.exitstatus}"
+      end
+    end
+
+    puts "\u{1F37A} done."
+  end
+
+  def build_commands
+    @db.entries.sort_by(&:first).select do |_, record|
+      record[:source]
+    end.map do |track_number, record|
+      command = ['ffmpeg']
+      command += ['-y', '-i', record.fetch(:source).to_s]
+      command += ['-ss', record.fetch(:start_pos), '-to', record.fetch(:end_pos)]
+      options = send("options_for_#{@format}_encoder")
+      command += options.fetch(:options)
+      output_name = '%03d.%s' % [track_number, options.fetch(:ext)]
+      command += [@output_dir.join(output_name).to_s]
+      command
+    end
+  end
+
+  def options_for_mp3_encoder
+    {
+      ext: 'mp3',
+      options: %w[-codec:a libmp3lame -q:a 0]
+    }
+  end
+
+  def options_for_aac_encoder
+    {
+      ext: 'm4a',
+      options: %w[-codec:a aac -b:a 256k]
+    }
+  end
+
+  def options_for_wav_encoder
+    {
+      ext: 'wav',
+      options: %w[-codec:a pcm_s16le]
+    }
+  end
+end
+
+app = App.new
+app.run
