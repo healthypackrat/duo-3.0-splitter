@@ -38,7 +38,7 @@ WAVエンコーダを指定してCDをiTunesでインポートしてください
 実行例:
 
 ```
-/usr/bin/ruby bin/duo-3.0-splitter -d ~/Desktop/Test -f aac ~/Music/iTunes/iTunes\ Media/Music/DUO\ 3.0/DUO\ 3.0/*.wav
+bin/duo-3.0-splitter -d ~/Desktop/Test -f aac ~/Music/iTunes/iTunes\ Media/Music/DUO\ 3.0/DUO\ 3.0/*.wav
 ```
 
 ## 参考: ラベルファイルの作り方
