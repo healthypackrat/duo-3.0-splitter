@@ -36,7 +36,7 @@ class App
 
       records = path.readlines.map(&:chomp).map {|line| line.split(/\t/) }
 
-      records.each_cons(2).each do |current_record, next_record|
+      records.each_cons(2) do |current_record, next_record|
         start_pos = current_record[0]
         end_pos = next_record[0]
         track_number = current_record[2].to_i
